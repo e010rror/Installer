@@ -15,7 +15,7 @@ class InstallerTileService : TileService() {
         super.onStartListening()
         qsTile?.apply {
             label = getString(R.string.app_name)
-            icon = Icon.createWithResource(this@InstallerTileService, R.drawable.ic_app_icon)
+            icon = Icon.createWithResource(this@InstallerTileService, R.drawable.ic_qs_installer)
             state = Tile.STATE_INACTIVE
             updateTile()
         }
