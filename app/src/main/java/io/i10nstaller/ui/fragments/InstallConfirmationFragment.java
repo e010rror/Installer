@@ -3,6 +3,8 @@ package io.i10nstaller.ui.fragments;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.os.Bundle;
+import android.view.View;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -25,6 +27,14 @@ public class InstallConfirmationFragment extends BaseDialogFragment {
     @Override
     public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
         var context = requireContext();
+        var dialogView = getLayoutInflater().inflate(R.layout.install_content_view, null);
+        var message = (TextView) dialogView.requireViewById(R.id.message);
+        message.setVisibility(View.VISIBLE);
+        message.setText(R.string.install_confirm_question);
+        dialogView.requireViewById(R.id.checkbox).setVisibility(View.GONE);
+        dialogView.requireViewById(R.id.grant_permissions_checkbox).setVisibility(View.GONE);
+        dialogView.requireViewById(R.id.delete_apk_checkbox).setVisibility(View.GONE);
+        dialogView.requireViewById(R.id.silent_mode_checkbox).setVisibility(View.GONE);
         var full = mDialogData.getFullInstall();
         var removeSplit = false;
         if (!full) {
@@ -40,6 +50,7 @@ public class InstallConfirmationFragment extends BaseDialogFragment {
         mDialog = new AlertDialog.Builder(context)
             .setIcon(mDialogData.getApkLite().getIcon())
             .setTitle(mDialogData.getApkLite().getLabel())
+            .setView(dialogView)
             .setPositiveButton(R.string.install,
                 (dialog, which) -> mViewModel.initiateInstall(
                     InstallOptions.getBoolean(
