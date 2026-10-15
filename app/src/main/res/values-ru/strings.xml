@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Установщик Shizuku</string>
+    <string name="app_name">installer</string>
 
     <string name="install">Установить</string>
     <string name="update">Обновить</string>

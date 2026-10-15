@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Pemasang Shizuku</string>
+    <string name="app_name">installer</string>
 
     <string name="install">Pasang</string>
     <string name="update">Perbarui</string>

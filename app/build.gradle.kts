@@ -20,6 +20,7 @@ plugins {
 android {
     namespace = "io.github.vvb2060.packageinstaller"
     defaultConfig {
+        applicationId = "io.i10nstaller"
         versionCode = 8
         versionName = "1.7"
         optimization {

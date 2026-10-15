@@ -28,6 +28,9 @@ public class InstallInstallingFragment extends BaseDialogFragment {
     @Override
     public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
         View dialogView = getLayoutInflater().inflate(R.layout.install_content_view, null);
+        dialogView.requireViewById(R.id.grant_permissions_checkbox).setVisibility(View.GONE);
+        dialogView.requireViewById(R.id.delete_apk_checkbox).setVisibility(View.GONE);
+        dialogView.requireViewById(R.id.silent_mode_checkbox).setVisibility(View.GONE);
         TextView textView = dialogView.requireViewById(R.id.message);
         ProgressBar progressBar = dialogView.requireViewById(R.id.progress);
         progressBar.setVisibility(View.VISIBLE);

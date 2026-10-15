@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Trình cài đặt Shizuku</string>
+    <string name="app_name">installer</string>
 
     <string name="install">Cài đặt</string>
     <string name="update">Cập nhật</string>

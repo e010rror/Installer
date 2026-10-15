@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">शिज़ुकु इंस्टॉलर</string>
+    <string name="app_name">installer</string>
 
     <string name="install">इंस्टॉल करें</string>
     <string name="update">अपडेट करें</string>

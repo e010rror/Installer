@@ -1,16 +1,29 @@
 package io.github.vvb2060.packageinstaller.ui
 
+import android.app.AlertDialog
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
+import android.view.Gravity
 import android.view.Window
+import android.view.WindowManager
+import android.widget.CheckBox
+import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentFactory
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.ViewModelProvider
+import io.github.vvb2060.packageinstaller.R
 import io.github.vvb2060.packageinstaller.model.InstallAborted
 import io.github.vvb2060.packageinstaller.model.InstallFailed
 import io.github.vvb2060.packageinstaller.model.InstallInstalling
+import io.github.vvb2060.packageinstaller.model.InstallOptions
 import io.github.vvb2060.packageinstaller.model.InstallStage
 import io.github.vvb2060.packageinstaller.model.InstallSuccess
 import io.github.vvb2060.packageinstaller.model.InstallUserAction
@@ -30,6 +43,8 @@ class InstallLaunch : FragmentActivity() {
 
     private lateinit var installViewModel: InstallViewModel
     private lateinit var fragmentManager: FragmentManager
+    private var silentApkInstall = false
+    private var silentInstallStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -48,6 +63,15 @@ class InstallLaunch : FragmentActivity() {
         }
 
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null && isOptionsIntent(intent)) {
+            showOptionsDialog()
+            return
+        }
+        silentApkInstall = InstallOptions.getBoolean(
+            this,
+            InstallOptions.KEY_SILENT_MODE
+        ) && isApkIntent(intent)
+        if (silentApkInstall) makeActivityInvisible()
         if (savedInstanceState == null) {
             installViewModel.preprocessIntent(this.intent)
         }
@@ -60,6 +84,14 @@ class InstallLaunch : FragmentActivity() {
         when (installStage.stageCode) {
             InstallStage.Companion.STAGE_ABORTED -> {
                 val aborted = installStage as InstallAborted
+                if (silentApkInstall) {
+                    if (aborted.abortReason != InstallAborted.ABORT_CLOSE) {
+                        failSilentInstall()
+                    } else {
+                        finishSilentInstall()
+                    }
+                    return
+                }
                 if (aborted.abortReason == InstallAborted.ABORT_CLOSE) {
                     showDialogInner(null)
                     finish()
@@ -70,35 +102,65 @@ class InstallLaunch : FragmentActivity() {
             }
 
             InstallStage.Companion.STAGE_PARSE -> {
-                val parseDialog = InstallParseFragment()
-                showDialogInner(parseDialog)
+                if (!silentApkInstall) {
+                    val parseDialog = InstallParseFragment()
+                    showDialogInner(parseDialog)
+                }
             }
 
             InstallStage.Companion.STAGE_USER_ACTION -> {
                 val uar = installStage as InstallUserAction
-                val actionDialog = InstallConfirmationFragment(uar)
-                showDialogInner(actionDialog)
+                if (silentApkInstall) {
+                    if (!silentInstallStarted) {
+                        silentInstallStarted = true
+                        installViewModel.initiateInstall(
+                            InstallOptions.getBoolean(this, InstallOptions.KEY_SET_INSTALLER),
+                            InstallOptions.getBoolean(this, InstallOptions.KEY_GRANT_PERMISSIONS),
+                            InstallOptions.getBoolean(this, InstallOptions.KEY_DELETE_APK),
+                            true,
+                            uar.fullInstall,
+                            false
+                        )
+                    }
+                } else {
+                    val actionDialog = InstallConfirmationFragment(uar)
+                    showDialogInner(actionDialog)
+                }
             }
 
             InstallStage.Companion.STAGE_ARCHIVE -> {
+                if (silentApkInstall) {
+                    failSilentInstall()
+                    return
+                }
                 val archive = installStage as PackageUserAction
                 val archiveDialog = ArchiveConfirmationFragment(archive)
                 showDialogInner(archiveDialog)
             }
 
             InstallStage.Companion.STAGE_INSTALLING -> {
-                val installing = installStage as InstallInstalling
-                val installingDialog = InstallInstallingFragment(installing)
-                showDialogInner(installingDialog)
+                if (!silentApkInstall) {
+                    val installing = installStage as InstallInstalling
+                    val installingDialog = InstallInstallingFragment(installing)
+                    showDialogInner(installingDialog)
+                }
             }
 
             InstallStage.Companion.STAGE_SUCCESS -> {
+                if (silentApkInstall) {
+                    finishSilentInstall()
+                    return
+                }
                 val success = installStage as InstallSuccess
                 val successDialog = InstallSuccessFragment(success)
                 showDialogInner(successDialog)
             }
 
             InstallStage.Companion.STAGE_FAILED -> {
+                if (silentApkInstall) {
+                    failSilentInstall()
+                    return
+                }
                 val failed = installStage as InstallFailed
                 val failureDialog = InstallFailedFragment(failed)
                 showDialogInner(failureDialog)
@@ -115,6 +177,91 @@ class InstallLaunch : FragmentActivity() {
         }
         currentDialog?.dismissAllowingStateLoss()
         newDialog?.show(fragmentManager, "dialog")
+    }
+
+    private fun isOptionsIntent(intent: Intent): Boolean =
+        intent.data == null && intent.action in setOf(
+            Intent.ACTION_MAIN,
+            Intent.ACTION_APPLICATION_PREFERENCES,
+            Intent.ACTION_SHOW_APP_INFO
+        )
+
+    private fun isApkIntent(intent: Intent): Boolean {
+        if (intent.action != Intent.ACTION_VIEW && intent.action != Intent.ACTION_INSTALL_PACKAGE) {
+            return false
+        }
+        val uri = intent.data ?: intent.getParcelableExtra(Intent.EXTRA_STREAM) ?: return false
+        if (uri.scheme == "package" || uri.scheme == "market") return false
+        if (intent.type == APK_MIME_TYPE || contentResolver.getType(uri) == APK_MIME_TYPE) {
+            return true
+        }
+        val name = uri.lastPathSegment.orEmpty().ifBlank {
+            try {
+                contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }.orEmpty()
+            } catch (_: Exception) {
+                ""
+            }
+        }
+        return name.substringBefore('?').endsWith(".apk", ignoreCase = true)
+    }
+
+    private fun makeActivityInvisible() {
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        window.setGravity(Gravity.START or Gravity.TOP)
+        window.setLayout(1, 1)
+        window.attributes = window.attributes.apply { alpha = 0f }
+    }
+
+    private fun finishSilentInstall() {
+        installViewModel.cleanupInstall()
+        finish()
+    }
+
+    private fun failSilentInstall() {
+        Toast.makeText(this, R.string.silent_install_failed, Toast.LENGTH_SHORT).show()
+        finishSilentInstall()
+    }
+
+    private fun showOptionsDialog() {
+        val padding = (resources.displayMetrics.density * 20).toInt()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, padding / 2, padding, 0)
+        }
+        addOption(content, R.string.set_installer, InstallOptions.KEY_SET_INSTALLER)
+        addOption(content, R.string.grant_permissions_battery, InstallOptions.KEY_GRANT_PERMISSIONS)
+        addOption(content, R.string.delete_apk_after_install, InstallOptions.KEY_DELETE_APK)
+        addOption(content, R.string.silent_mode, InstallOptions.KEY_SILENT_MODE)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.install_options_title)
+            .setView(content)
+            .setPositiveButton(R.string.done, null)
+            .setOnDismissListener { finish() }
+            .show()
+    }
+
+    private fun addOption(parent: LinearLayout, label: Int, key: String) {
+        val checkbox = CheckBox(this).apply {
+            text = getString(label)
+            isChecked = InstallOptions.getBoolean(this@InstallLaunch, key)
+            setOnCheckedChangeListener { _, checked ->
+                InstallOptions.setBoolean(this@InstallLaunch, key, checked)
+            }
+        }
+        parent.addView(checkbox)
+    }
+
+    private companion object {
+        const val APK_MIME_TYPE = "application/vnd.android.package-archive"
     }
 
 }

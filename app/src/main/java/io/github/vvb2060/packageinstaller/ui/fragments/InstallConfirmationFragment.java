@@ -23,13 +23,17 @@ import androidx.annotation.Nullable;
 
 import io.github.vvb2060.packageinstaller.BuildConfig;
 import io.github.vvb2060.packageinstaller.R;
+import io.github.vvb2060.packageinstaller.model.InstallOptions;
 import io.github.vvb2060.packageinstaller.model.InstallUserAction;
 
 public class InstallConfirmationFragment extends BaseDialogFragment {
 
     private final InstallUserAction mDialogData;
     private AlertDialog mDialog;
-    private CheckBox mCheckBox;
+    private CheckBox mSetInstaller;
+    private CheckBox mGrantPermissions;
+    private CheckBox mDeleteApk;
+    private CheckBox mSilentMode;
     private TextView mTextView;
 
     public InstallConfirmationFragment(InstallUserAction dialogData) {
@@ -43,27 +47,51 @@ public class InstallConfirmationFragment extends BaseDialogFragment {
         var context = requireContext();
         View dialogView = getLayoutInflater().inflate(R.layout.install_content_view, null);
         mTextView = dialogView.requireViewById(R.id.message);
-        mCheckBox = dialogView.requireViewById(R.id.checkbox);
+        mSetInstaller = dialogView.requireViewById(R.id.checkbox);
+        mGrantPermissions = dialogView.requireViewById(R.id.grant_permissions_checkbox);
+        mDeleteApk = dialogView.requireViewById(R.id.delete_apk_checkbox);
+        mSilentMode = dialogView.requireViewById(R.id.silent_mode_checkbox);
+        mGrantPermissions.setVisibility(View.VISIBLE);
+        mDeleteApk.setVisibility(View.VISIBLE);
+        mSilentMode.setVisibility(View.VISIBLE);
         if (!mDialogData.getSkipCreate()) {
-            mCheckBox.setText(R.string.set_installer);
-            mCheckBox.setVisibility(View.VISIBLE);
+            mSetInstaller.setText(R.string.set_installer);
+            mSetInstaller.setVisibility(View.VISIBLE);
         }
 
         var sb = new SpannableStringBuilder();
         getInfo(context, sb);
         var old = mDialogData.getOldApk();
+        boolean setInstallerDefault = false;
         int question = R.string.install_confirm_question;
         if (old != null) {
             var flags = old.applicationInfo.flags;
             var installer = BuildConfig.APPLICATION_ID.equals(old.sharedUserId);
             var installed = (flags & ApplicationInfo.FLAG_INSTALLED) != 0;
-            if (!installer && savedInstanceState == null) {
-                mCheckBox.setChecked(true);
-            }
+            if (installed && !installer) setInstallerDefault = true;
             if (installed) {
                 question = R.string.install_confirm_question_update;
             }
         }
+        mSetInstaller.setChecked(InstallOptions.getBoolean(
+            context,
+            InstallOptions.KEY_SET_INSTALLER,
+            setInstallerDefault
+        ));
+        mGrantPermissions.setChecked(InstallOptions.getBoolean(
+            context, InstallOptions.KEY_GRANT_PERMISSIONS, false));
+        mDeleteApk.setChecked(InstallOptions.getBoolean(
+            context, InstallOptions.KEY_DELETE_APK, false));
+        mSilentMode.setChecked(InstallOptions.getBoolean(
+            context, InstallOptions.KEY_SILENT_MODE, false));
+        mSetInstaller.setOnCheckedChangeListener((button, checked) ->
+            InstallOptions.setBoolean(context, InstallOptions.KEY_SET_INSTALLER, checked));
+        mGrantPermissions.setOnCheckedChangeListener((button, checked) ->
+            InstallOptions.setBoolean(context, InstallOptions.KEY_GRANT_PERMISSIONS, checked));
+        mDeleteApk.setOnCheckedChangeListener((button, checked) ->
+            InstallOptions.setBoolean(context, InstallOptions.KEY_DELETE_APK, checked));
+        mSilentMode.setOnCheckedChangeListener((button, checked) ->
+            InstallOptions.setBoolean(context, InstallOptions.KEY_SILENT_MODE, checked));
         var full = mDialogData.getFullInstall();
         var removeSplit = false;
         if (!full) {
@@ -88,12 +116,24 @@ public class InstallConfirmationFragment extends BaseDialogFragment {
             .setView(dialogView)
             .setPositiveButton(old != null ? R.string.update : R.string.install,
                 (dialogInt, which) ->
-                    mViewModel.initiateInstall(mCheckBox.isChecked(), true, full, remove))
+                    mViewModel.initiateInstall(
+                        mSetInstaller.isChecked(),
+                        mGrantPermissions.isChecked(),
+                        mDeleteApk.isChecked(),
+                        true,
+                        full,
+                        remove))
             .setNegativeButton(android.R.string.cancel,
                 (dialogInt, which) -> cleanAndFinish())
             .setNeutralButton(R.string.add_more,
                 (dialogInt, which) ->
-                    mViewModel.initiateInstall(mCheckBox.isChecked(), false, full, remove))
+                    mViewModel.initiateInstall(
+                        mSetInstaller.isChecked(),
+                        mGrantPermissions.isChecked(),
+                        mDeleteApk.isChecked(),
+                        false,
+                        full,
+                        remove))
             .create();
         mDialog.setCanceledOnTouchOutside(false);
         return mDialog;

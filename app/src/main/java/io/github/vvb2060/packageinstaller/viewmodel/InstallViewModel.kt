@@ -33,12 +33,21 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
     fun initiateInstall(
         setInstaller: Boolean,
+        grantPermissions: Boolean,
+        deleteSource: Boolean,
         commit: Boolean,
         full: Boolean,
         removeSplit: Boolean
     ) {
         executor.executeOnDiskIO {
-            repository.install(setInstaller, commit, full, removeSplit)
+            repository.install(
+                setInstaller,
+                grantPermissions,
+                deleteSource,
+                commit,
+                full,
+                removeSplit
+            )
         }
     }
 
