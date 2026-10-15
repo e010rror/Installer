@@ -52,5 +52,4 @@
     <string name="error_shizuku_unavailable">"Shizukuは利用できません。"</string>
     <string name="error_create">"インストールセッションの作成に失敗しました。"</string>
     <string name="error_write">"APKのコピーに失敗しました。"</string>
-    <string name="error_info">"このソフトウェアは%sの下でオープンソースです。"</string>
 </resources>

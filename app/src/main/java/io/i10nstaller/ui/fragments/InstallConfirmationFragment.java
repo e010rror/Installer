@@ -1,4 +1,4 @@
-package io.github.vvb2060.packageinstaller.ui.fragments;
+package io.i10nstaller.ui.fragments;
 
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -21,10 +21,10 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import io.github.vvb2060.packageinstaller.BuildConfig;
-import io.github.vvb2060.packageinstaller.R;
-import io.github.vvb2060.packageinstaller.model.InstallOptions;
-import io.github.vvb2060.packageinstaller.model.InstallUserAction;
+import io.i10nstaller.BuildConfig;
+import io.i10nstaller.R;
+import io.i10nstaller.model.InstallOptions;
+import io.i10nstaller.model.InstallUserAction;
 
 public class InstallConfirmationFragment extends BaseDialogFragment {
 

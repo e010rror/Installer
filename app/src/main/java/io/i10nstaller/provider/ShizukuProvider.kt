@@ -1,3 +1,3 @@
-package io.github.vvb2060.packageinstaller.provider
+package io.i10nstaller.provider
 
 class ShizukuProvider : rikka.shizuku.ShizukuProvider()

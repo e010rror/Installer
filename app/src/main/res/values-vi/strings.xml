@@ -52,5 +52,4 @@
     <string name="error_shizuku_unavailable">Shizuku không khả dụng.</string>
     <string name="error_create">Không thể tạo phiên cài đặt.</string>
     <string name="error_write">Không thể sao chép apk.</string>
-    <string name="error_info">Phần mềm này là mã nguồn mở theo %s.</string>
 </resources>

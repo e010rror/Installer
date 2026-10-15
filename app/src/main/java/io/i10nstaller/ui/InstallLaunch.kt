@@ -1,6 +1,5 @@
-package io.github.vvb2060.packageinstaller.ui
+package io.i10nstaller.ui
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -10,8 +9,6 @@ import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.Window
 import android.view.WindowManager
-import android.widget.CheckBox
-import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
@@ -19,24 +16,24 @@ import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentFactory
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.ViewModelProvider
-import io.github.vvb2060.packageinstaller.R
-import io.github.vvb2060.packageinstaller.model.InstallAborted
-import io.github.vvb2060.packageinstaller.model.InstallFailed
-import io.github.vvb2060.packageinstaller.model.InstallInstalling
-import io.github.vvb2060.packageinstaller.model.InstallOptions
-import io.github.vvb2060.packageinstaller.model.InstallStage
-import io.github.vvb2060.packageinstaller.model.InstallSuccess
-import io.github.vvb2060.packageinstaller.model.InstallUserAction
-import io.github.vvb2060.packageinstaller.model.PackageUserAction
-import io.github.vvb2060.packageinstaller.ui.fragments.ArchiveConfirmationFragment
-import io.github.vvb2060.packageinstaller.ui.fragments.BaseDialogFragment
-import io.github.vvb2060.packageinstaller.ui.fragments.InstallConfirmationFragment
-import io.github.vvb2060.packageinstaller.ui.fragments.InstallErrorFragment
-import io.github.vvb2060.packageinstaller.ui.fragments.InstallFailedFragment
-import io.github.vvb2060.packageinstaller.ui.fragments.InstallInstallingFragment
-import io.github.vvb2060.packageinstaller.ui.fragments.InstallParseFragment
-import io.github.vvb2060.packageinstaller.ui.fragments.InstallSuccessFragment
-import io.github.vvb2060.packageinstaller.viewmodel.InstallViewModel
+import io.i10nstaller.R
+import io.i10nstaller.model.InstallAborted
+import io.i10nstaller.model.InstallFailed
+import io.i10nstaller.model.InstallInstalling
+import io.i10nstaller.model.InstallOptions
+import io.i10nstaller.model.InstallStage
+import io.i10nstaller.model.InstallSuccess
+import io.i10nstaller.model.InstallUserAction
+import io.i10nstaller.model.PackageUserAction
+import io.i10nstaller.ui.fragments.ArchiveConfirmationFragment
+import io.i10nstaller.ui.fragments.BaseDialogFragment
+import io.i10nstaller.ui.fragments.InstallConfirmationFragment
+import io.i10nstaller.ui.fragments.InstallErrorFragment
+import io.i10nstaller.ui.fragments.InstallFailedFragment
+import io.i10nstaller.ui.fragments.InstallInstallingFragment
+import io.i10nstaller.ui.fragments.InstallParseFragment
+import io.i10nstaller.ui.fragments.InstallSuccessFragment
+import io.i10nstaller.viewmodel.InstallViewModel
 import java.lang.reflect.Constructor
 
 class InstallLaunch : FragmentActivity() {
@@ -64,7 +61,7 @@ class InstallLaunch : FragmentActivity() {
 
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null && isOptionsIntent(intent)) {
-            showOptionsDialog()
+            showDialogInner(InstallErrorFragment(InstallAborted(InstallAborted.ABORT_INFO)))
             return
         }
         silentApkInstall = InstallOptions.getBoolean(
@@ -229,35 +226,6 @@ class InstallLaunch : FragmentActivity() {
     private fun failSilentInstall() {
         Toast.makeText(this, R.string.silent_install_failed, Toast.LENGTH_SHORT).show()
         finishSilentInstall()
-    }
-
-    private fun showOptionsDialog() {
-        val padding = (resources.displayMetrics.density * 20).toInt()
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(padding, padding / 2, padding, 0)
-        }
-        addOption(content, R.string.set_installer, InstallOptions.KEY_SET_INSTALLER)
-        addOption(content, R.string.grant_permissions_battery, InstallOptions.KEY_GRANT_PERMISSIONS)
-        addOption(content, R.string.delete_apk_after_install, InstallOptions.KEY_DELETE_APK)
-        addOption(content, R.string.silent_mode, InstallOptions.KEY_SILENT_MODE)
-        AlertDialog.Builder(this)
-            .setTitle(R.string.install_options_title)
-            .setView(content)
-            .setPositiveButton(R.string.done, null)
-            .setOnDismissListener { finish() }
-            .show()
-    }
-
-    private fun addOption(parent: LinearLayout, label: Int, key: String) {
-        val checkbox = CheckBox(this).apply {
-            text = getString(label)
-            isChecked = InstallOptions.getBoolean(this@InstallLaunch, key)
-            setOnCheckedChangeListener { _, checked ->
-                InstallOptions.setBoolean(this@InstallLaunch, key, checked)
-            }
-        }
-        parent.addView(checkbox)
     }
 
     private companion object {

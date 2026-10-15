@@ -17,7 +17,7 @@
 }
 -dontwarn dalvik.system.VMRuntime
 
--keepclassmembers class io.github.vvb2060.packageinstaller.viewmodel.InstallViewModel {
+-keepclassmembers class io.i10nstaller.viewmodel.InstallViewModel {
     <init>(android.app.Application);
 }
 -keepnames class moe.shizuku.api.BinderContainer

@@ -1,4 +1,4 @@
-package io.github.vvb2060.packageinstaller.ui.fragments;
+package io.i10nstaller.ui.fragments;
 
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -12,7 +12,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.DialogFragment;
 
-import io.github.vvb2060.packageinstaller.R;
+import io.i10nstaller.R;
 
 public class InstallParseFragment extends DialogFragment {
 

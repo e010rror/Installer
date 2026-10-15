@@ -1,4 +1,4 @@
-package io.github.vvb2060.packageinstaller.model
+package io.i10nstaller.model
 
 import android.Manifest
 import android.app.Application
@@ -30,16 +30,16 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.net.toUri
 import androidx.lifecycle.MutableLiveData
-import io.github.vvb2060.packageinstaller.R
-import io.github.vvb2060.packageinstaller.model.Hook.wrap
-import io.github.vvb2060.packageinstaller.model.InstallAborted.Companion.ABORT_CLOSE
-import io.github.vvb2060.packageinstaller.model.InstallAborted.Companion.ABORT_CREATE
-import io.github.vvb2060.packageinstaller.model.InstallAborted.Companion.ABORT_INFO
-import io.github.vvb2060.packageinstaller.model.InstallAborted.Companion.ABORT_NOTFOUND
-import io.github.vvb2060.packageinstaller.model.InstallAborted.Companion.ABORT_PARSE
-import io.github.vvb2060.packageinstaller.model.InstallAborted.Companion.ABORT_SHIZUKU
-import io.github.vvb2060.packageinstaller.model.InstallAborted.Companion.ABORT_SPLIT
-import io.github.vvb2060.packageinstaller.model.InstallAborted.Companion.ABORT_WRITE
+import io.i10nstaller.R
+import io.i10nstaller.model.Hook.wrap
+import io.i10nstaller.model.InstallAborted.Companion.ABORT_CLOSE
+import io.i10nstaller.model.InstallAborted.Companion.ABORT_CREATE
+import io.i10nstaller.model.InstallAborted.Companion.ABORT_INFO
+import io.i10nstaller.model.InstallAborted.Companion.ABORT_NOTFOUND
+import io.i10nstaller.model.InstallAborted.Companion.ABORT_PARSE
+import io.i10nstaller.model.InstallAborted.Companion.ABORT_SHIZUKU
+import io.i10nstaller.model.InstallAborted.Companion.ABORT_SPLIT
+import io.i10nstaller.model.InstallAborted.Companion.ABORT_WRITE
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider
 import java.io.File
