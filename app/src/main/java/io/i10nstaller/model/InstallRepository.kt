@@ -63,6 +63,7 @@ class InstallRepository(private val context: Application) {
     val installResult = MutableLiveData<InstallStage>()
     val stagingProgress = MutableLiveData<Int>()
     private lateinit var packageManager: PackageManager
+    private lateinit var currentUserPackageManager: PackageManager
     private lateinit var packageInstaller: PackageInstaller
     private var stagedSessionId = SessionInfo.INVALID_ID
     private var callingUid = Process.INVALID_UID
@@ -81,6 +82,8 @@ class InstallRepository(private val context: Application) {
         Log.v(TAG, "Intent: $intent")
 
         return try {
+            currentUserPackageManager =
+                context.createPackageContext(context.packageName, 0).packageManager
             if (hasShizukuInstallPermission()) {
                 Hook.init(context)
                 packageManager = Hook.pm
@@ -133,7 +136,7 @@ class InstallRepository(private val context: Application) {
             (!useShizuku || !hasShizukuPermission(INTERACT_ACROSS_USERS))
         ) {
             Log.i(TAG, "Querying $packageName for the current user; cross-user access is unavailable")
-            return context.packageManager.getPackageInfo(packageName, currentUserFlags)
+            return currentUserPackageManager.getPackageInfo(packageName, currentUserFlags)
         }
 
         return try {
@@ -145,7 +148,7 @@ class InstallRepository(private val context: Application) {
                 "Package query for $packageName was denied; retrying for the current user",
                 e
             )
-            context.packageManager.getPackageInfo(packageName, currentUserFlags)
+            currentUserPackageManager.getPackageInfo(packageName, currentUserFlags)
         }
     }
 
@@ -156,7 +159,7 @@ class InstallRepository(private val context: Application) {
             (!useShizuku || !hasShizukuPermission(INTERACT_ACROSS_USERS))
         ) {
             Log.i(TAG, "Querying $packageName for the current user; cross-user access is unavailable")
-            return context.packageManager.getApplicationInfo(packageName, currentUserFlags)
+            return currentUserPackageManager.getApplicationInfo(packageName, currentUserFlags)
         }
 
         return try {
@@ -168,7 +171,7 @@ class InstallRepository(private val context: Application) {
                 "Application query for $packageName was denied; retrying for the current user",
                 e
             )
-            context.packageManager.getApplicationInfo(packageName, currentUserFlags)
+            currentUserPackageManager.getApplicationInfo(packageName, currentUserFlags)
         }
     }
 
@@ -177,7 +180,7 @@ class InstallRepository(private val context: Application) {
             packageManager.resolveContentProvider(authority, 0)
         } catch (e: SecurityException) {
             Log.w(TAG, "Could not resolve provider $authority; retrying with the current-user manager", e)
-            context.packageManager.resolveContentProvider(authority, 0)
+            currentUserPackageManager.resolveContentProvider(authority, 0)
         }
     }
 
@@ -190,7 +193,7 @@ class InstallRepository(private val context: Application) {
                 "Could not query installer for $packageName; retrying with the current-user manager",
                 e
             )
-            context.packageManager.getInstallerPackageName(packageName)
+            currentUserPackageManager.getInstallerPackageName(packageName)
         }
     }
 
@@ -200,7 +203,7 @@ class InstallRepository(private val context: Application) {
         val currentUserInstaller = if (privilegedCrossUserQuery) {
             packageInstaller
         } else {
-            context.packageManager.packageInstaller
+            currentUserPackageManager.packageInstaller
         }
         return try {
             currentUserInstaller.allSessions
@@ -208,7 +211,7 @@ class InstallRepository(private val context: Application) {
             if (currentUserInstaller === packageInstaller) {
                 Log.w(TAG, "Could not query privileged install sessions; retrying for current user", e)
                 try {
-                    context.packageManager.packageInstaller.allSessions
+                    currentUserPackageManager.packageInstaller.allSessions
                 } catch (fallbackError: SecurityException) {
                     Log.w(TAG, "Could not query current-user install sessions", fallbackError)
                     emptyList()
@@ -226,7 +229,7 @@ class InstallRepository(private val context: Application) {
         val currentUserInstaller = if (privilegedCrossUserQuery) {
             packageInstaller
         } else {
-            context.packageManager.packageInstaller
+            currentUserPackageManager.packageInstaller
         }
         return try {
             currentUserInstaller.getSessionInfo(sessionId)
@@ -234,7 +237,7 @@ class InstallRepository(private val context: Application) {
             if (currentUserInstaller === packageInstaller) {
                 Log.w(TAG, "Could not query privileged session $sessionId; retrying for current user", e)
                 try {
-                    context.packageManager.packageInstaller.getSessionInfo(sessionId)
+                    currentUserPackageManager.packageInstaller.getSessionInfo(sessionId)
                 } catch (fallbackError: SecurityException) {
                     Log.w(TAG, "Could not query current-user session $sessionId", fallbackError)
                     null
