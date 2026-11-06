@@ -1,5 +1,6 @@
 package io.i10nstaller.ui.fragments;
 
+import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.os.Bundle;
 
@@ -25,6 +26,24 @@ public class BaseDialogFragment extends DialogFragment {
         super.onCreate(savedInstanceState);
         mViewModel = new ViewModelProvider(requireActivity())
             .get(InstallViewModel.class);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (getDialog() instanceof AlertDialog alertDialog) {
+            for (int which : new int[] {
+                AlertDialog.BUTTON_POSITIVE,
+                AlertDialog.BUTTON_NEGATIVE,
+                AlertDialog.BUTTON_NEUTRAL
+            }) {
+                var button = alertDialog.getButton(which);
+                if (button != null) {
+                    button.setFocusable(true);
+                    button.setClickable(true);
+                }
+            }
+        }
     }
 
     @Override

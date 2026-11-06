@@ -23,6 +23,9 @@ android {
         applicationId = "io.i10nstaller"
         versionCode = 9
         versionName = "1.8"
+        ndk {
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+        }
         optimization {
             keepRules {
                 ignoreFromAllExternalDependencies(true)

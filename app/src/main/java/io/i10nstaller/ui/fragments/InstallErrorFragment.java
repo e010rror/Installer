@@ -106,6 +106,8 @@ public class InstallErrorFragment extends BaseDialogFragment {
 
     private void addOption(Context context, LinearLayout parent, int label, String key) {
         var checkbox = new CheckBox(context);
+        checkbox.setFocusable(true);
+        checkbox.setClickable(true);
         checkbox.setText(label);
         checkbox.setChecked(InstallOptions.getBoolean(context, key, false));
         checkbox.setOnCheckedChangeListener((button, checked) ->
