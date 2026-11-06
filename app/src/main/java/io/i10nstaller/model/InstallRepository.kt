@@ -49,6 +49,8 @@ import rikka.shizuku.Shizuku
 import java.io.File
 import java.io.IOException
 
+private const val INTERACT_ACROSS_USERS = "android.permission.INTERACT_ACROSS_USERS"
+
 class InstallRepository(private val context: Application) {
     private val TAG = InstallRepository::class.java.simpleName
     private val CLEANUP_TAG = "InstallCleanup"
@@ -106,17 +108,141 @@ class InstallRepository(private val context: Application) {
     }
 
     private fun hasShizukuInstallPermission(): Boolean {
+        return hasShizukuPermission(Manifest.permission.INSTALL_PACKAGES)
+    }
+
+    private fun hasShizukuPermission(permission: String): Boolean {
         return try {
             Shizuku.pingBinder()
                 && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-                && (Shizuku.checkRemotePermission(Manifest.permission.INSTALL_PACKAGES)
+                && (Shizuku.checkRemotePermission(permission)
                     == PackageManager.PERMISSION_GRANTED)
         } catch (e: Exception) {
-            Log.w(TAG, "Shizuku is unavailable; using the system package installer", e)
+            Log.w(TAG, "Could not verify Shizuku permission $permission", e)
             false
         } catch (e: LinkageError) {
-            Log.w(TAG, "Shizuku is incompatible; using the system package installer", e)
+            Log.w(TAG, "Could not verify Shizuku permission $permission", e)
             false
+        }
+    }
+
+    private fun getPackageInfo(packageName: String, flags: Int): PackageInfo {
+        val includesAnyUser = flags and PackageManager_rename.MATCH_ANY_USER != 0
+        val currentUserFlags = flags and PackageManager_rename.MATCH_ANY_USER.inv()
+        if (includesAnyUser &&
+            (!useShizuku || !hasShizukuPermission(INTERACT_ACROSS_USERS))
+        ) {
+            Log.i(TAG, "Querying $packageName for the current user; cross-user access is unavailable")
+            return context.packageManager.getPackageInfo(packageName, currentUserFlags)
+        }
+
+        return try {
+            packageManager.getPackageInfo(packageName, flags)
+        } catch (e: SecurityException) {
+            if (!includesAnyUser && !useShizuku) throw e
+            Log.w(
+                TAG,
+                "Package query for $packageName was denied; retrying for the current user",
+                e
+            )
+            context.packageManager.getPackageInfo(packageName, currentUserFlags)
+        }
+    }
+
+    private fun getApplicationInfo(packageName: String, flags: Int): android.content.pm.ApplicationInfo {
+        val includesAnyUser = flags and PackageManager_rename.MATCH_ANY_USER != 0
+        val currentUserFlags = flags and PackageManager_rename.MATCH_ANY_USER.inv()
+        if (includesAnyUser &&
+            (!useShizuku || !hasShizukuPermission(INTERACT_ACROSS_USERS))
+        ) {
+            Log.i(TAG, "Querying $packageName for the current user; cross-user access is unavailable")
+            return context.packageManager.getApplicationInfo(packageName, currentUserFlags)
+        }
+
+        return try {
+            packageManager.getApplicationInfo(packageName, flags)
+        } catch (e: SecurityException) {
+            if (!includesAnyUser && !useShizuku) throw e
+            Log.w(
+                TAG,
+                "Application query for $packageName was denied; retrying for the current user",
+                e
+            )
+            context.packageManager.getApplicationInfo(packageName, currentUserFlags)
+        }
+    }
+
+    private fun resolveContentProvider(authority: String): android.content.pm.ProviderInfo? {
+        return try {
+            packageManager.resolveContentProvider(authority, 0)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Could not resolve provider $authority; retrying with the current-user manager", e)
+            context.packageManager.resolveContentProvider(authority, 0)
+        }
+    }
+
+    private fun getInstallerPackageName(packageName: String): String? {
+        return try {
+            packageManager.getInstallerPackageName(packageName)
+        } catch (e: SecurityException) {
+            Log.w(
+                TAG,
+                "Could not query installer for $packageName; retrying with the current-user manager",
+                e
+            )
+            context.packageManager.getInstallerPackageName(packageName)
+        }
+    }
+
+    private fun getInstallSessions(): List<SessionInfo> {
+        val privilegedCrossUserQuery =
+            useShizuku && hasShizukuPermission(INTERACT_ACROSS_USERS)
+        val currentUserInstaller = if (privilegedCrossUserQuery) {
+            packageInstaller
+        } else {
+            context.packageManager.packageInstaller
+        }
+        return try {
+            currentUserInstaller.allSessions
+        } catch (e: SecurityException) {
+            if (currentUserInstaller === packageInstaller) {
+                Log.w(TAG, "Could not query privileged install sessions; retrying for current user", e)
+                try {
+                    context.packageManager.packageInstaller.allSessions
+                } catch (fallbackError: SecurityException) {
+                    Log.w(TAG, "Could not query current-user install sessions", fallbackError)
+                    emptyList()
+                }
+            } else {
+                Log.w(TAG, "Could not query current-user install sessions", e)
+                emptyList()
+            }
+        }
+    }
+
+    private fun getInstallSession(sessionId: Int): SessionInfo? {
+        val privilegedCrossUserQuery =
+            useShizuku && hasShizukuPermission(INTERACT_ACROSS_USERS)
+        val currentUserInstaller = if (privilegedCrossUserQuery) {
+            packageInstaller
+        } else {
+            context.packageManager.packageInstaller
+        }
+        return try {
+            currentUserInstaller.getSessionInfo(sessionId)
+        } catch (e: SecurityException) {
+            if (currentUserInstaller === packageInstaller) {
+                Log.w(TAG, "Could not query privileged session $sessionId; retrying for current user", e)
+                try {
+                    context.packageManager.packageInstaller.getSessionInfo(sessionId)
+                } catch (fallbackError: SecurityException) {
+                    Log.w(TAG, "Could not query current-user session $sessionId", fallbackError)
+                    null
+                }
+            } else {
+                Log.w(TAG, "Could not query current-user session $sessionId", e)
+                null
+            }
         }
     }
 
@@ -275,7 +401,7 @@ class InstallRepository(private val context: Application) {
         Log.v(TAG, "content URI: $uri")
         if (ContentResolver.SCHEME_CONTENT == uri.scheme) {
             uri.authority?.let { authority ->
-                packageManager.resolveContentProvider(authority, 0)?.also { info ->
+                resolveContentProvider(authority)?.also { info ->
                     callingUid = info.applicationInfo.uid
                 }
             }
@@ -293,27 +419,29 @@ class InstallRepository(private val context: Application) {
             return InstallAborted(ABORT_PARSE)
         }
         val old = try {
-            packageManager.getPackageInfo(apk.packageName, PackageManager_rename.MATCH_KNOWN_PACKAGES)
+            getPackageInfo(apk.packageName, PackageManager_rename.MATCH_KNOWN_PACKAGES)
         } catch (_: PackageManager.NameNotFoundException) {
             null
         }
         var full = true
         if (apk.isSplit()) {
-            for (item in packageInstaller.allSessions) {
+            for (item in getInstallSessions()) {
                 if (item.isActive && item.appPackageName == apk.packageName) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        // noinspection NewApi
-                        if (item.installerUid != Shizuku.getUid()) {
-                            continue
+                    if (useShizuku && hasShizukuPermission(INTERACT_ACROSS_USERS)) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            // noinspection NewApi
+                            if (item.installerUid != Shizuku.getUid()) continue
+                        } else {
+                            if (item.installReason != PackageManager.INSTALL_REASON_USER) continue
+                            item as PackageInstaller_rename.SessionInfo
+                            if (item.installFlags and PackageManager_rename.INSTALL_FROM_ADB == 0) {
+                                continue
+                            }
                         }
                     } else {
-                        if (item.installReason != PackageManager.INSTALL_REASON_USER) continue
-                        item as PackageInstaller_rename.SessionInfo
-                        if (item.installFlags and PackageManager_rename.INSTALL_FROM_ADB == 0) {
-                            continue
-                        }
+                        if (item.installerPackageName != context.packageName) continue
                     }
-                    val info = packageInstaller.getSessionInfo(item.sessionId)!!
+                    val info = getInstallSession(item.sessionId) ?: continue
                     stagedSessionId = info.sessionId
                     full = info.mode == SessionParams.MODE_FULL_INSTALL
                     apk.label = info.appLabel as String?
@@ -337,7 +465,7 @@ class InstallRepository(private val context: Application) {
                 apk.icon = old.applicationInfo!!.loadIcon(packageManager)
             }
             // use this field to store the installer package name
-            old.sharedUserId = packageManager.getInstallerPackageName(apk.packageName)
+            old.sharedUserId = getInstallerPackageName(apk.packageName)
         }
         if (apk.label == null && ContentResolver.SCHEME_CONTENT == uri.scheme) {
             context.contentResolver.query(uri, null, null, null, null).use { cursor ->
@@ -358,7 +486,7 @@ class InstallRepository(private val context: Application) {
 
     private fun processPackageUri(packageName: String): InstallStage {
         val info = try {
-            packageManager.getPackageInfo(packageName, PackageManager_rename.MATCH_KNOWN_PACKAGES)
+            getPackageInfo(packageName, PackageManager_rename.MATCH_KNOWN_PACKAGES)
         } catch (e: PackageManager.NameNotFoundException) {
             Log.e(TAG, "Requested package not available.", e)
             return InstallAborted(ABORT_NOTFOUND)
@@ -439,7 +567,7 @@ class InstallRepository(private val context: Application) {
         var installer = context.packageName
         if (setInstaller && useShizuku) {
             try {
-                packageManager.getPackageInfo("com.android.vending", PackageManager.MATCH_SYSTEM_ONLY)
+                getPackageInfo("com.android.vending", PackageManager.MATCH_SYSTEM_ONLY)
                 installer = "com.android.vending"
             } catch (_: PackageManager.NameNotFoundException) {
                 installer = "com.android.shell"
@@ -591,7 +719,7 @@ class InstallRepository(private val context: Application) {
         if (!packageName.matches(Regex("[A-Za-z0-9_.]+"))) return
 
         val uid = try {
-            packageManager.getApplicationInfo(packageName, 0).uid
+            getApplicationInfo(packageName, 0).uid
         } catch (e: PackageManager.NameNotFoundException) {
             Log.w(TAG, "Could not resolve UID for $packageName", e)
             return
