@@ -14,6 +14,7 @@ import android.content.res.XmlResourceParser
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.util.DisplayMetrics
+import android.util.Log
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
@@ -30,6 +31,8 @@ import java.util.Locale
 import java.util.function.Consumer
 
 object PackageUtil {
+    private const val TAG = "PackageUtil"
+
     fun getApkLite(pm: PackageManager, pkgInfo: PackageInfo): ApkLite {
         val info = pkgInfo.applicationInfo ?: ApplicationInfo().apply {
             packageName = pkgInfo.packageName
@@ -55,16 +58,28 @@ object PackageUtil {
             .get().use { zipFile ->
                 val xml = zipFile.getEntry("AndroidManifest.xml")
                 if (xml != null) {
-                    try {
-                        return getAppLiteFromApkFd(
+                    val apkLite = try {
+                        getAppLiteFromApkFd(
                             afd.getFileDescriptor(),
-                            afd.toString(), afd.getLength()
+                            afd.toString(),
+                            afd.getLength()
                         )
-                    } catch (_: IOException) {
-                        zipFile.getInputStream(xml).use { input ->
-                            val bytes = IOUtils.toByteArray(input)
-                            return getAppLiteFromXmlBytes(bytes)
-                        }
+                    } catch (e: Exception) {
+                        Log.w(
+                            TAG,
+                            "Could not load APK assets from file descriptor; parsing manifest bytes",
+                            e
+                        )
+                        null
+                    } catch (e: LinkageError) {
+                        Log.w(TAG, "APK assets API is unavailable; parsing manifest bytes", e)
+                        null
+                    }
+                    if (apkLite != null) return apkLite
+
+                    zipFile.getInputStream(xml).use { input ->
+                        val bytes = IOUtils.toByteArray(input)
+                        return getAppLiteFromXmlBytes(bytes)
                     }
                 }
 
@@ -130,11 +145,7 @@ object PackageUtil {
     }
 
     private fun getAppLiteFromApkFd(fd: FileDescriptor, name: String, length: Long): ApkLite? {
-        val assets = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            ApkAssets.loadFromFd(fd, name, 0, length, 0, null)
-        } else {
-            ApkAssets.loadFromFd(fd, name, false, false)
-        }
+        val assets = loadApkAssetsFromFd(fd, name, length)
         val am = `AssetManager$Builder`()
             .addApkAssets(assets)
             .build() as AssetManager
@@ -144,6 +155,61 @@ object PackageUtil {
         val xmlParser = assets.openXml("AndroidManifest.xml")
         return xmlParser?.use {
             parsingAndroidManifest(xmlParser, apkResources)
+        }
+    }
+
+    private fun loadApkAssetsFromFd(
+        fd: FileDescriptor,
+        friendlyName: String,
+        length: Long
+    ): ApkAssets {
+        val method = ApkAssets::class.java.declaredMethods
+            .filter { candidate ->
+                candidate.name == "loadFromFd" &&
+                    java.lang.reflect.Modifier.isStatic(candidate.modifiers) &&
+                    isSupportedLoadFromFdSignature(candidate.parameterTypes)
+            }
+            .minByOrNull { candidate -> loadFromFdPriority(candidate.parameterTypes) }
+            ?: throw NoSuchMethodException("No supported ApkAssets.loadFromFd method")
+        method.isAccessible = true
+
+        val parameters = method.parameterTypes
+        val arguments = when {
+            parameters.size == 6 -> arrayOf(fd, friendlyName, 0L, length, 0, null)
+            parameters.size == 4 && parameters[2] == Int::class.javaPrimitiveType ->
+                arrayOf(fd, friendlyName, 0, null)
+            parameters.size == 3 -> arrayOf(fd, friendlyName, 0)
+            else -> arrayOf(fd, friendlyName, false, false)
+        }
+        return method.invoke(null, *arguments) as ApkAssets
+    }
+
+    private fun loadFromFdPriority(parameters: Array<Class<*>>): Int =
+        when {
+            parameters.size == 6 -> 0
+            parameters.size == 4 && parameters[2] == Int::class.javaPrimitiveType -> 1
+            parameters.size == 3 -> 2
+            else -> 3
+        }
+
+    private fun isSupportedLoadFromFdSignature(parameters: Array<Class<*>>): Boolean {
+        if (parameters.size < 2 ||
+            parameters[0] != FileDescriptor::class.java ||
+            parameters[1] != String::class.java
+        ) {
+            return false
+        }
+        return when (parameters.size) {
+            6 -> parameters[2] == Long::class.javaPrimitiveType &&
+                parameters[3] == Long::class.javaPrimitiveType &&
+                parameters[4] == Int::class.javaPrimitiveType &&
+                parameters[5].simpleName == "AssetsProvider"
+            4 -> (parameters[2] == Int::class.javaPrimitiveType &&
+                parameters[3].simpleName == "AssetsProvider") ||
+                (parameters[2] == Boolean::class.javaPrimitiveType &&
+                    parameters[3] == Boolean::class.javaPrimitiveType)
+            3 -> parameters[2] == Int::class.javaPrimitiveType
+            else -> false
         }
     }
 
