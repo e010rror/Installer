@@ -4,6 +4,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.content.Context
 import android.content.res.ApkAssets
 import android.content.res.AssetFileDescriptor
 import android.content.res.AssetManager
@@ -26,6 +27,7 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.io.FileDescriptor
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.util.Locale
 import java.util.function.Consumer
@@ -51,7 +53,7 @@ object PackageUtil {
         ).apply { zip = true }
     }
 
-    fun parseZipFromFd(afd: AssetFileDescriptor): ApkLite? {
+    fun parseZipFromFd(context: Context, afd: AssetFileDescriptor): ApkLite? {
         ZipFile.builder()
             .setIgnoreLocalFileHeader(true)
             .setSeekableByteChannel(afd.createInputStream().getChannel())
@@ -75,11 +77,16 @@ object PackageUtil {
                         Log.w(TAG, "APK assets API is unavailable; parsing manifest bytes", e)
                         null
                     }
-                    if (apkLite != null) return apkLite
+                    if (apkLite != null) {
+                        resolveArchiveResources(context, afd, apkLite)
+                        return apkLite
+                    }
 
                     zipFile.getInputStream(xml).use { input ->
                         val bytes = IOUtils.toByteArray(input)
-                        return getAppLiteFromXmlBytes(bytes)
+                        return getAppLiteFromXmlBytes(bytes)?.also {
+                            resolveArchiveResources(context, afd, it)
+                        }
                     }
                 }
 
@@ -115,6 +122,48 @@ object PackageUtil {
                 }
             }
 
+    }
+
+    private fun resolveArchiveResources(
+        context: Context,
+        afd: AssetFileDescriptor,
+        apkLite: ApkLite
+    ) {
+        if (!apkLite.label.isNullOrBlank() &&
+            !apkLite.label!!.startsWith("@") &&
+            apkLite.icon != null
+        ) {
+            return
+        }
+
+        var archiveFile: File? = null
+        try {
+            archiveFile = File.createTempFile("installer-archive-", ".apk", context.cacheDir)
+            afd.createInputStream().use { input ->
+                FileOutputStream(archiveFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            val packageManager = context.packageManager
+            val archiveInfo = packageManager.getPackageArchiveInfo(archiveFile.absolutePath, 0)
+                ?: return
+            val applicationInfo = archiveInfo.applicationInfo ?: return
+            applicationInfo.sourceDir = archiveFile.absolutePath
+            applicationInfo.publicSourceDir = archiveFile.absolutePath
+
+            val label = applicationInfo.loadLabel(packageManager)?.toString()
+            if (!label.isNullOrBlank() && !label.startsWith("@")) {
+                apkLite.label = label
+            }
+            applicationInfo.loadIcon(packageManager)?.let { apkLite.icon = it }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not resolve app label and icon from APK archive resources", e)
+        } catch (e: LinkageError) {
+            Log.w(TAG, "APK archive metadata API is unavailable", e)
+        } finally {
+            archiveFile?.delete()
+        }
     }
 
     private fun getAppLiteFromXmlBytesLink(xmlBytes: ByteArray): ApkLite? {

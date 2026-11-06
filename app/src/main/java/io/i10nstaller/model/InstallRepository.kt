@@ -412,7 +412,7 @@ class InstallRepository(private val context: Application) {
         val apk = try {
             context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd ->
                 captureSourcePath(afd.parcelFileDescriptor.fd)
-                PackageUtil.parseZipFromFd(afd)
+                PackageUtil.parseZipFromFd(context, afd)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse APK from content URI: $uri", e)
@@ -621,34 +621,65 @@ class InstallRepository(private val context: Application) {
     }
 
     private fun commit() {
-        val receiver = LocalIntentReceiver { status, legacyStatus, message, resultIntent ->
-            try {
-                if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-                    launchPendingUserAction(resultIntent)
-                } else {
-                    setStageBasedOnResult(status, legacyStatus, message)
-                }
-            } catch (e: Exception) {
-                reportUnexpectedFailure(e)
-            } catch (e: LinkageError) {
-                reportUnexpectedFailure(e)
-            }
-        }
+        var resultReceiver: InstallResultSender? = null
         try {
+            val callbackReceiver = createInstallResultSender { status, legacyStatus, message, resultIntent ->
+                try {
+                    if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                        launchPendingUserAction(resultIntent)
+                    } else {
+                        setStageBasedOnResult(status, legacyStatus, message)
+                    }
+                } catch (e: Exception) {
+                    reportUnexpectedFailure(e)
+                } catch (e: LinkageError) {
+                    reportUnexpectedFailure(e)
+                }
+            }
+            resultReceiver = callbackReceiver
             val session = packageInstaller.openSession(stagedSessionId)
             try {
                 if (useShizuku) session.wrap()
                 // noinspection RequestInstallPackagesPolicy
-                session.commit(receiver.intentSender as IntentSender)
+                session.commit(callbackReceiver.intentSender)
             } finally {
                 session.close()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to commit staged session", e)
             cleanupInstall()
+            resultReceiver?.close?.invoke()
+            reportUnexpectedFailure(e)
+        } catch (e: LinkageError) {
+            Log.e(TAG, "Failed to create or commit install result receiver", e)
+            cleanupInstall()
+            resultReceiver?.close?.invoke()
             reportUnexpectedFailure(e)
         }
     }
+
+    private fun createInstallResultSender(
+        callback: (Int, Int, String?, Intent) -> Unit
+    ): InstallResultSender {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val receiver = LocalIntentReceiver(callback::invoke)
+                return InstallResultSender(receiver.intentSender as IntentSender) {}
+            } catch (e: LinkageError) {
+                Log.w(TAG, "Hidden install-result receiver is unavailable; using PendingIntent", e)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not create hidden install-result receiver; using PendingIntent", e)
+            }
+        }
+
+        val receiver = PendingIntentInstallReceiver(context, callback)
+        return InstallResultSender(receiver.pendingIntent.intentSender, receiver::close)
+    }
+
+    private data class InstallResultSender(
+        val intentSender: IntentSender,
+        val close: () -> Unit
+    )
 
     private fun launchPendingUserAction(resultIntent: Intent) {
         val confirmationIntent = resultIntent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
@@ -1356,46 +1387,60 @@ class InstallRepository(private val context: Application) {
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
         if (uninstall) {
-            val receiver = LocalIntentReceiver { statusCode, legacyCode, msg, resultIntent ->
-                try {
-                    if (statusCode == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-                        launchPendingUserAction(resultIntent)
-                    } else if (statusCode == PackageInstaller.STATUS_SUCCESS) {
-                        installResult.postValue(InstallSuccess(apkLite!!, intent, path))
-                    } else {
-                        installResult.postValue(InstallSuccess(apkLite!!, intent, "$path\n\n$msg"))
+            var resultReceiver: InstallResultSender? = null
+            try {
+                val callbackReceiver =
+                    createInstallResultSender { statusCode, legacyCode, msg, resultIntent ->
+                        try {
+                            if (statusCode == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                                launchPendingUserAction(resultIntent)
+                            } else if (statusCode == PackageInstaller.STATUS_SUCCESS) {
+                                installResult.postValue(InstallSuccess(apkLite!!, intent, path))
+                            } else {
+                                installResult.postValue(
+                                    InstallSuccess(apkLite!!, intent, "$path\n\n$msg")
+                                )
+                            }
+                        } catch (e: Exception) {
+                            reportUnexpectedFailure(e)
+                        } catch (e: LinkageError) {
+                            reportUnexpectedFailure(e)
+                        }
                     }
-                } catch (e: Exception) {
-                    reportUnexpectedFailure(e)
-                } catch (e: LinkageError) {
-                    reportUnexpectedFailure(e)
+                resultReceiver = callbackReceiver
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                    try {
+                        // noinspection MissingPermission
+                        packageInstaller.requestArchive(
+                            info.packageName,
+                            callbackReceiver.intentSender
+                        )
+                        return
+                    } catch (e: PackageManager.NameNotFoundException) {
+                        Log.w(TAG, "Failed to archive for package ${info.packageName}", e)
+                    }
                 }
+                // noinspection MissingPermission NewApi
+                packageInstaller.uninstall(
+                    VersionedPackage(info.packageName, info.longVersionCode),
+                    PackageManager_rename.DELETE_KEEP_DATA,
+                    callbackReceiver.intentSender
+                )
+                val userId = Os.getuid() / 100000
+                val pm = packageManager as PackageManager_rename
+                pm.deleteApplicationCacheFilesAsUser(info.packageName, userId, null)
+            } catch (e: Exception) {
+                resultReceiver?.close?.invoke()
+                reportUnexpectedFailure(e)
+            } catch (e: LinkageError) {
+                resultReceiver?.close?.invoke()
+                reportUnexpectedFailure(e)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                try {
-                    // noinspection MissingPermission
-                    packageInstaller.requestArchive(
-                        info.packageName,
-                        receiver.intentSender as IntentSender
-                    )
-                    return
-                } catch (e: PackageManager.NameNotFoundException) {
-                    Log.w(TAG, "Failed to archive for package ${info.packageName}", e)
-                }
-            }
-            // noinspection MissingPermission NewApi
-            packageInstaller.uninstall(
-                VersionedPackage(info.packageName, info.longVersionCode),
-                PackageManager_rename.DELETE_KEEP_DATA,
-                receiver.intentSender as IntentSender
-            )
-            val userId = Os.getuid() / 100000
-            val pm = packageManager as PackageManager_rename
-            pm.deleteApplicationCacheFilesAsUser(info.packageName, userId, null)
         } else {
             installResult.postValue(InstallSuccess(apkLite!!, intent, path))
         }
     }
+
 
     fun setPackageEnabled(packageName: String, enabled: Boolean) {
         val newState = if (enabled) {
