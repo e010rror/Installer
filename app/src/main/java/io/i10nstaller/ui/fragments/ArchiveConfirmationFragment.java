@@ -23,7 +23,7 @@ public class ArchiveConfirmationFragment extends BaseDialogFragment {
     }
 
     @Override
-    protected boolean shouldAutoFocusPositiveButtonOnTv() {
+    protected boolean shouldHandleConfirmationDpadKeys() {
         return true;
     }
 

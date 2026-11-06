@@ -56,19 +56,23 @@ public class BaseDialogFragment extends DialogFragment {
                     button.setClickable(true);
                 }
             }
-            if (shouldAutoFocusPositiveButtonOnTv() && isTvDevice) {
-                configureTvConfirmationDialog(alertDialog);
+            if (shouldHandleConfirmationDpadKeys()) {
+                configureConfirmationDialog(alertDialog);
             }
         }
     }
 
-    private void configureTvConfirmationDialog(AlertDialog dialog) {
+    private void configureConfirmationDialog(AlertDialog dialog) {
         var positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         var negativeButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
         var neutralButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
         if (positiveButton == null) {
             return;
         }
+
+        positiveButton.setFocusable(true);
+        positiveButton.setFocusableInTouchMode(true);
+        positiveButton.post(positiveButton::requestFocus);
 
         if (negativeButton != null) {
             negativeButton.setFocusableInTouchMode(true);
@@ -95,7 +99,7 @@ public class BaseDialogFragment extends DialogFragment {
         mDialogViewTreeObserver.addOnTouchModeChangeListener(mTouchModeChangeListener);
 
         dialog.setOnKeyListener((ignored, keyCode, event) ->
-            handleTvConfirmationKey(
+            handleConfirmationKey(
                 positiveButton, negativeButton, neutralButton, keyCode, event));
     }
 
@@ -110,7 +114,7 @@ public class BaseDialogFragment extends DialogFragment {
         return button != null && button.hasFocus();
     }
 
-    private boolean handleTvConfirmationKey(
+    private boolean handleConfirmationKey(
         View positiveButton, View negativeButton, View neutralButton,
         int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
@@ -120,13 +124,12 @@ public class BaseDialogFragment extends DialogFragment {
                 return false;
             }
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                positiveButton.requestFocus();
                 positiveButton.setPressed(true);
                 return true;
             }
             if (event.getAction() == KeyEvent.ACTION_UP) {
                 positiveButton.setPressed(false);
-                if (!event.isCanceled()) {
+                if (!event.isCanceled() && positiveButton.isEnabled()) {
                     positiveButton.performClick();
                 }
                 return true;
@@ -134,12 +137,17 @@ public class BaseDialogFragment extends DialogFragment {
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
             && event.getAction() == KeyEvent.ACTION_DOWN
-            && !hasFocus(negativeButton)
-            && !hasFocus(neutralButton)
             && negativeButton != null
-            && negativeButton.getVisibility() == View.VISIBLE
-            && negativeButton.isEnabled()) {
+            && negativeButton.isEnabled()
+            && !negativeButton.hasFocus()) {
             negativeButton.requestFocus();
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+            && event.getAction() == KeyEvent.ACTION_DOWN
+            && positiveButton.isEnabled()
+            && !positiveButton.hasFocus()) {
+            positiveButton.requestFocus();
             return true;
         }
         return false;
@@ -154,7 +162,7 @@ public class BaseDialogFragment extends DialogFragment {
             || !context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
     }
 
-    protected boolean shouldAutoFocusPositiveButtonOnTv() {
+    protected boolean shouldHandleConfirmationDpadKeys() {
         return false;
     }
 

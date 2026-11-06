@@ -24,7 +24,7 @@ public class InstallConfirmationFragment extends BaseDialogFragment {
     }
 
     @Override
-    protected boolean shouldAutoFocusPositiveButtonOnTv() {
+    protected boolean shouldHandleConfirmationDpadKeys() {
         return true;
     }
 
