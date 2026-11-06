@@ -40,8 +40,22 @@ public class BaseDialogFragment extends DialogFragment {
                 var button = alertDialog.getButton(which);
                 if (button != null) {
                     button.setFocusable(true);
+                    button.setFocusableInTouchMode(false);
                     button.setClickable(true);
                 }
+            }
+        }
+    }
+
+    protected void focusPositiveButtonForDpad() {
+        if (getDialog() instanceof AlertDialog alertDialog) {
+            var positiveButton = alertDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (positiveButton != null) {
+                positiveButton.post(() -> {
+                    if (!positiveButton.isInTouchMode()) {
+                        positiveButton.requestFocus();
+                    }
+                });
             }
         }
     }

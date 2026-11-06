@@ -77,7 +77,9 @@ public class InstallConfirmationFragment extends BaseDialogFragment {
     @Override
     public void onStart() {
         super.onStart();
-        mDialog.getButton(AlertDialog.BUTTON_POSITIVE).setFilterTouchesWhenObscured(true);
+        var positiveButton = mDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        positiveButton.setFilterTouchesWhenObscured(true);
+        focusPositiveButtonForDpad();
     }
 
     @Override
