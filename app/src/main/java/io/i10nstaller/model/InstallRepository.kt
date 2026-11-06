@@ -717,8 +717,14 @@ class InstallRepository(private val context: Application) {
     ): InstallResultSender {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                val receiver = LocalIntentReceiver(callback::invoke)
-                return InstallResultSender(receiver.intentSender as IntentSender) {}
+                val helper = Class.forName(
+                    "io.i10nstaller.model.ModernInstallResultSender"
+                )
+                val sender = helper.getMethod(
+                    "create",
+                    kotlin.jvm.functions.Function4::class.java
+                ).invoke(null, callback) as IntentSender
+                return InstallResultSender(sender) {}
             } catch (e: LinkageError) {
                 Log.w(TAG, "Hidden install-result receiver is unavailable; using PendingIntent", e)
             } catch (e: Exception) {
