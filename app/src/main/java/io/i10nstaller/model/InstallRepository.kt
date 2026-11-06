@@ -317,6 +317,10 @@ class InstallRepository(private val context: Application) {
         } catch (e: LinkageError) {
             cleanupInstall()
             reportUnexpectedFailure(e)
+        } catch (t: Throwable) {
+            if (t is VirtualMachineError || t is ThreadDeath) throw t
+            cleanupInstall()
+            reportUnexpectedFailure(t)
         }
     }
 
@@ -688,6 +692,9 @@ class InstallRepository(private val context: Application) {
                     reportUnexpectedFailure(e)
                 } catch (e: LinkageError) {
                     reportUnexpectedFailure(e)
+                } catch (t: Throwable) {
+                    if (t is VirtualMachineError || t is ThreadDeath) throw t
+                    reportUnexpectedFailure(t)
                 }
             }
             resultReceiver = callbackReceiver

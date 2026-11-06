@@ -14,6 +14,7 @@ import android.content.res.XmlBlock
 import android.content.res.XmlResourceParser
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.os.Build.VERSION_CODES
 import android.util.DisplayMetrics
 import android.util.Log
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
@@ -507,7 +508,11 @@ object PackageUtil {
         callback.accept(0)
         val total = afd.getLength()
         var totalRead = 0L
-        val fileName = System.currentTimeMillis().toString()
+        val fileName = if (Build.VERSION.SDK_INT <= VERSION_CODES.Q) {
+            "base.apk"
+        } else {
+            System.currentTimeMillis().toString()
+        }
         session.openWrite(fileName, 0, total).use { out ->
             afd.createInputStream().use { instream ->
                 val buffer = ByteArray(16 * 1024)
@@ -521,6 +526,11 @@ object PackageUtil {
                 }
             }
             if (totalRead == 0L) throw IOException("The selected package contains no data")
+            if (total >= 0L && totalRead != total) {
+                throw IOException(
+                    "The selected package stream was incomplete ($totalRead of $total bytes)"
+                )
+            }
             session.fsync(out)
         }
     }

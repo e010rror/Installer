@@ -73,8 +73,9 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 block()
             } catch (e: Exception) {
                 repository.reportUnexpectedFailure(e)
-            } catch (e: LinkageError) {
-                repository.reportUnexpectedFailure(e)
+            } catch (t: Throwable) {
+                if (t is VirtualMachineError || t is ThreadDeath) throw t
+                repository.reportUnexpectedFailure(t)
             }
         }
     }
