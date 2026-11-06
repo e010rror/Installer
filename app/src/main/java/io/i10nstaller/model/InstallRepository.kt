@@ -133,8 +133,8 @@ class InstallRepository(private val context: Application) {
     }
 
     private fun getPackageInfo(packageName: String, flags: Int): PackageInfo {
-        val includesAnyUser = flags and PackageManager_rename.MATCH_ANY_USER != 0
-        val currentUserFlags = flags and PackageManager_rename.MATCH_ANY_USER.inv()
+        val includesAnyUser = flags and MATCH_ANY_USER != 0
+        val currentUserFlags = flags and MATCH_ANY_USER.inv()
         if (includesAnyUser &&
             (!useShizuku || !hasShizukuPermission(INTERACT_ACROSS_USERS))
         ) {
@@ -156,8 +156,8 @@ class InstallRepository(private val context: Application) {
     }
 
     private fun getApplicationInfo(packageName: String, flags: Int): android.content.pm.ApplicationInfo {
-        val includesAnyUser = flags and PackageManager_rename.MATCH_ANY_USER != 0
-        val currentUserFlags = flags and PackageManager_rename.MATCH_ANY_USER.inv()
+        val includesAnyUser = flags and MATCH_ANY_USER != 0
+        val currentUserFlags = flags and MATCH_ANY_USER.inv()
         if (includesAnyUser &&
             (!useShizuku || !hasShizukuPermission(INTERACT_ACROSS_USERS))
         ) {
@@ -436,7 +436,7 @@ class InstallRepository(private val context: Application) {
             return InstallAborted(ABORT_PARSE)
         }
         val old = try {
-            getPackageInfo(apk.packageName, PackageManager_rename.MATCH_KNOWN_PACKAGES)
+            getPackageInfo(apk.packageName, MATCH_KNOWN_PACKAGES)
         } catch (_: PackageManager.NameNotFoundException) {
             null
         }
@@ -451,7 +451,7 @@ class InstallRepository(private val context: Application) {
                         } else {
                             if (item.installReason != PackageManager.INSTALL_REASON_USER) continue
                             item as PackageInstaller_rename.SessionInfo
-                            if (item.installFlags and PackageManager_rename.INSTALL_FROM_ADB == 0) {
+                            if (item.installFlags and INSTALL_FROM_ADB == 0) {
                                 continue
                             }
                         }
@@ -547,7 +547,7 @@ class InstallRepository(private val context: Application) {
 
     private fun processPackageUri(packageName: String): InstallStage {
         val info = try {
-            getPackageInfo(packageName, PackageManager_rename.MATCH_KNOWN_PACKAGES)
+            getPackageInfo(packageName, MATCH_KNOWN_PACKAGES)
         } catch (e: PackageManager.NameNotFoundException) {
             Log.e(TAG, "Requested package not available.", e)
             return InstallAborted(ABORT_NOTFOUND)
@@ -603,13 +603,13 @@ class InstallRepository(private val context: Application) {
             pm.installExistingPackage(apkLite!!.packageName, PackageManager.INSTALL_REASON_USER)
             setStageBasedOnResult(
                 PackageInstaller.STATUS_SUCCESS,
-                PackageManager_rename.INSTALL_SUCCEEDED,
+                INSTALL_SUCCEEDED,
                 null
             )
         } catch (e: PackageManager.NameNotFoundException) {
             setStageBasedOnResult(
                 PackageInstaller.STATUS_FAILURE,
-                PackageManager_rename.INSTALL_FAILED_INTERNAL_ERROR,
+                INSTALL_FAILED_INTERNAL_ERROR,
                 e.localizedMessage
             )
         } catch (e: Exception) {
@@ -665,14 +665,14 @@ class InstallRepository(private val context: Application) {
 
         if (useShizuku) {
             val p = params as PackageInstaller_rename.SessionParams
-            p.installFlags = p.installFlags or PackageManager_rename.INSTALL_ALLOW_TEST
-            p.installFlags = p.installFlags or PackageManager_rename.INSTALL_GRANT_ALL_REQUESTED_PERMISSIONS
-            p.installFlags = p.installFlags or PackageManager_rename.INSTALL_REPLACE_EXISTING
-            p.installFlags = p.installFlags or PackageManager_rename.INSTALL_REQUEST_DOWNGRADE
-            p.installFlags = p.installFlags or PackageManager_rename.INSTALL_FULL_APP
+            p.installFlags = p.installFlags or INSTALL_ALLOW_TEST
+            p.installFlags = p.installFlags or INSTALL_GRANT_ALL_REQUESTED_PERMISSIONS
+            p.installFlags = p.installFlags or INSTALL_REPLACE_EXISTING
+            p.installFlags = p.installFlags or INSTALL_REQUEST_DOWNGRADE
+            p.installFlags = p.installFlags or INSTALL_FULL_APP
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                p.installFlags = p.installFlags or PackageManager_rename.INSTALL_BYPASS_LOW_TARGET_SDK_BLOCK
-                p.installFlags = p.installFlags or PackageManager_rename.INSTALL_REQUEST_UPDATE_OWNERSHIP
+                p.installFlags = p.installFlags or INSTALL_BYPASS_LOW_TARGET_SDK_BLOCK
+                p.installFlags = p.installFlags or INSTALL_REQUEST_UPDATE_OWNERSHIP
             }
         }
         return params
@@ -803,7 +803,7 @@ class InstallRepository(private val context: Application) {
         return if (currentApk != null) {
             InstallFailed(
                 currentApk,
-                PackageManager_rename.INSTALL_FAILED_INTERNAL_ERROR,
+                INSTALL_FAILED_INTERNAL_ERROR,
                 PackageInstaller.STATUS_FAILURE,
                 message
             )
@@ -1496,7 +1496,7 @@ class InstallRepository(private val context: Application) {
                 // noinspection MissingPermission NewApi
                 packageInstaller.uninstall(
                     VersionedPackage(info.packageName, info.longVersionCode),
-                    PackageManager_rename.DELETE_KEEP_DATA,
+                    DELETE_KEEP_DATA,
                     callbackReceiver.intentSender
                 )
                 val userId = Os.getuid() / 100000

@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInstaller
-import android.content.pm.PackageInstaller_rename
-import android.content.pm.PackageManager_rename
 import android.os.Build
 import android.util.Log
 import java.util.UUID
@@ -26,8 +24,8 @@ internal class PendingIntentInstallReceiver(
                 PackageInstaller.STATUS_FAILURE
             )
             val legacyStatus = intent.getIntExtra(
-                PackageInstaller_rename.EXTRA_LEGACY_STATUS,
-                PackageManager_rename.INSTALL_FAILED_INTERNAL_ERROR
+                EXTRA_LEGACY_STATUS,
+                INSTALL_FAILED_INTERNAL_ERROR
             )
             val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
             try {
