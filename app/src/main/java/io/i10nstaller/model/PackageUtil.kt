@@ -53,7 +53,11 @@ object PackageUtil {
         ).apply { zip = true }
     }
 
-    fun parseZipFromFd(context: Context, afd: AssetFileDescriptor): ApkLite? {
+    fun parseZipFromFd(
+        context: Context,
+        afd: AssetFileDescriptor,
+        archivePath: File? = null
+    ): ApkLite? {
         ZipFile.builder()
             .setIgnoreLocalFileHeader(true)
             .setSeekableByteChannel(afd.createInputStream().getChannel())
@@ -78,14 +82,26 @@ object PackageUtil {
                         null
                     }
                     if (apkLite != null) {
-                        resolveArchiveResources(context, afd, apkLite)
+                        resolveArchiveResources(
+                            context,
+                            afd,
+                            apkLite,
+                            archivePath,
+                            Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q
+                        )
                         return apkLite
                     }
 
                     zipFile.getInputStream(xml).use { input ->
                         val bytes = IOUtils.toByteArray(input)
                         return getAppLiteFromXmlBytes(bytes)?.also {
-                            resolveArchiveResources(context, afd, it)
+                            resolveArchiveResources(
+                                context,
+                                afd,
+                                it,
+                                archivePath,
+                                Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q
+                            )
                         }
                     }
                 }
@@ -127,33 +143,46 @@ object PackageUtil {
     private fun resolveArchiveResources(
         context: Context,
         afd: AssetFileDescriptor,
-        apkLite: ApkLite
+        apkLite: ApkLite,
+        archivePath: File?,
+        force: Boolean
     ) {
-        if (!apkLite.label.isNullOrBlank() &&
+        if (!force &&
+            !apkLite.label.isNullOrBlank() &&
             !apkLite.label!!.startsWith("@") &&
             apkLite.icon != null
         ) {
             return
         }
 
-        var archiveFile: File? = null
+        var temporaryArchive: File? = null
         try {
-            archiveFile = File.createTempFile("installer-archive-", ".apk", context.cacheDir)
-            afd.createInputStream().use { input ->
-                FileOutputStream(archiveFile).use { output ->
-                    input.copyTo(output)
+            val archiveFile = archivePath ?: File.createTempFile(
+                "installer-archive-",
+                ".apk",
+                context.cacheDir
+            ).also { temporaryArchive = it }
+            if (archivePath == null) {
+                afd.createInputStream().use { input ->
+                    FileOutputStream(archiveFile).use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
 
             val packageManager = context.packageManager
-            val archiveInfo = packageManager.getPackageArchiveInfo(archiveFile.absolutePath, 0)
-                ?: return
+            val archiveInfo = packageManager.getPackageArchiveInfo(
+                archiveFile.absolutePath,
+                PackageManager.GET_META_DATA
+            ) ?: return
             val applicationInfo = archiveInfo.applicationInfo ?: return
             applicationInfo.sourceDir = archiveFile.absolutePath
             applicationInfo.publicSourceDir = archiveFile.absolutePath
 
             val label = applicationInfo.loadLabel(packageManager)?.toString()
-            if (!label.isNullOrBlank() && !label.startsWith("@")) {
+                ?.takeIf { it.isNotBlank() && !it.startsWith("@") }
+                ?: archiveInfo.packageName
+            if (force || apkLite.label.isNullOrBlank() || apkLite.label!!.startsWith("@")) {
                 apkLite.label = label
             }
             applicationInfo.loadIcon(packageManager)?.let { apkLite.icon = it }
@@ -162,7 +191,7 @@ object PackageUtil {
         } catch (e: LinkageError) {
             Log.w(TAG, "APK archive metadata API is unavailable", e)
         } finally {
-            archiveFile?.delete()
+            temporaryArchive?.delete()
         }
     }
 
@@ -477,18 +506,21 @@ object PackageUtil {
     ) {
         callback.accept(0)
         val total = afd.getLength()
-        val instream = afd.createInputStream()
         var totalRead = 0L
         val fileName = System.currentTimeMillis().toString()
         session.openWrite(fileName, 0, total).use { out ->
-            val buffer = ByteArray(16 * 1024)
-            var numRead: Int
-            while (instream.read(buffer).also { numRead = it } != -1) {
-                out.write(buffer, 0, numRead)
-                totalRead += numRead
-                val fraction = totalRead.toFloat() / total.toFloat()
-                callback.accept((fraction * 100.0).toInt())
+            afd.createInputStream().use { instream ->
+                val buffer = ByteArray(16 * 1024)
+                var numRead: Int
+                while (instream.read(buffer).also { numRead = it } != -1) {
+                    out.write(buffer, 0, numRead)
+                    totalRead += numRead
+                    if (total > 0L) {
+                        callback.accept((totalRead.toFloat() / total.toFloat() * 100.0).toInt())
+                    }
+                }
             }
+            if (totalRead == 0L) throw IOException("The selected package contains no data")
             session.fsync(out)
         }
     }

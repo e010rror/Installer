@@ -8,6 +8,7 @@ import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentSender
 import android.content.Intent_rename
+import android.content.res.AssetFileDescriptor
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
@@ -22,6 +23,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.Process
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
@@ -55,7 +57,7 @@ class InstallRepository(private val context: Application) {
     private val TAG = InstallRepository::class.java.simpleName
     private val CLEANUP_TAG = "InstallCleanup"
     private val postInstallExceptionHandler = CoroutineExceptionHandler { _, error ->
-        Log.e(TAG, "Post-install task failed", error)
+        Log.e("InstallerCrash", "Post-install coroutine failed", error)
     }
     private val postInstallScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + postInstallExceptionHandler
@@ -71,6 +73,7 @@ class InstallRepository(private val context: Application) {
     private var apkLite: ApkLite? = null
     private var sourceUri: Uri? = null
     private var sourcePath: String? = null
+    private var stagedSourceFile: File? = null
     private var grantPermissionsAfterInstall = false
     private var deleteSourceAfterInstall = false
     private var useShizuku = false
@@ -367,7 +370,8 @@ class InstallRepository(private val context: Application) {
                 if (removeSplit) {
                     session.removeSplit(apkLite!!.splitName!!)
                 } else {
-                    val afd = context.contentResolver.openAssetFileDescriptor(uri, "r")
+                    val afd = stagedSourceFile?.let(::openStagedSourceDescriptor)
+                        ?: context.contentResolver.openAssetFileDescriptor(uri, "r")
                         ?: throw IOException("Could not open the selected package file")
                     afd.use {
                         captureSourcePath(it.parcelFileDescriptor.fd)
@@ -390,6 +394,12 @@ class InstallRepository(private val context: Application) {
             Log.e(TAG, "Could not stage APK.", e)
             reportUnexpectedFailure(e)
             return
+        } catch (t: Throwable) {
+            if (t is VirtualMachineError || t is ThreadDeath) throw t
+            cleanupInstall()
+            Log.e(TAG, "Could not stream package into the install session.", t)
+            reportUnexpectedFailure(t)
+            return
         }
 
         if (commit) {
@@ -410,9 +420,9 @@ class InstallRepository(private val context: Application) {
             }
         }
         val apk = try {
-            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd ->
+            openPackageDescriptor(uri)?.use { afd ->
                 captureSourcePath(afd.parcelFileDescriptor.fd)
-                PackageUtil.parseZipFromFd(context, afd)
+                PackageUtil.parseZipFromFd(context, afd, stagedSourceFile)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse APK from content URI: $uri", e)
@@ -485,6 +495,50 @@ class InstallRepository(private val context: Application) {
         apkLite = apk
         val skipCreate = stagedSessionId != SessionInfo.INVALID_ID
         return InstallUserAction(apk, old, full, skipCreate)
+    }
+
+    private fun openPackageDescriptor(uri: Uri): AssetFileDescriptor? {
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.Q) {
+            return context.contentResolver.openAssetFileDescriptor(uri, "r")
+        }
+
+        val cachedFile = File.createTempFile("installer-source-", ".apk", context.cacheDir)
+        try {
+            val input = when (uri.scheme) {
+                ContentResolver.SCHEME_FILE -> {
+                    val path = uri.path ?: throw IOException("Package file URI has no path")
+                    File(path).inputStream()
+                }
+                ContentResolver.SCHEME_CONTENT ->
+                    context.contentResolver.openInputStream(uri)
+                        ?: throw IOException("Could not read the selected package")
+                else -> throw IOException("Unsupported package URI: $uri")
+            }
+            input.use { source ->
+                cachedFile.outputStream().use { destination ->
+                    source.copyTo(destination)
+                }
+            }
+            if (cachedFile.length() == 0L) {
+                throw IOException("The selected package file is empty")
+            }
+
+            val descriptor = openStagedSourceDescriptor(cachedFile)
+            stagedSourceFile?.delete()
+            stagedSourceFile = cachedFile
+            return descriptor
+        } catch (e: Exception) {
+            cachedFile.delete()
+            throw e
+        } catch (e: LinkageError) {
+            cachedFile.delete()
+            throw e
+        }
+    }
+
+    private fun openStagedSourceDescriptor(file: File): AssetFileDescriptor {
+        val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        return AssetFileDescriptor(descriptor, 0, file.length())
     }
 
     private fun processPackageUri(packageName: String): InstallStage {
@@ -1312,6 +1366,12 @@ class InstallRepository(private val context: Application) {
                 Log.w(TAG, "Could not abandon install session $stagedSessionId", e)
             }
             stagedSessionId = SessionInfo.INVALID_ID
+        }
+        stagedSourceFile?.let { file ->
+            if (!file.delete()) {
+                Log.w(TAG, "Could not delete staged package ${file.absolutePath}")
+            }
+            stagedSourceFile = null
         }
     }
 
