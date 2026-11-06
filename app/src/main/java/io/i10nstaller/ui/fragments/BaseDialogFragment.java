@@ -1,11 +1,7 @@
 package io.i10nstaller.ui.fragments;
 
 import android.app.AlertDialog;
-import android.app.UiModeManager;
-import android.content.Context;
 import android.content.DialogInterface;
-import android.content.pm.PackageManager;
-import android.content.res.Configuration;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
@@ -42,7 +38,6 @@ public class BaseDialogFragment extends DialogFragment {
     public void onStart() {
         super.onStart();
         if (getDialog() instanceof AlertDialog alertDialog) {
-            boolean isTvDevice = isTvDevice();
             for (int which : new int[] {
                 AlertDialog.BUTTON_POSITIVE,
                 AlertDialog.BUTTON_NEGATIVE,
@@ -51,8 +46,7 @@ public class BaseDialogFragment extends DialogFragment {
                 var button = alertDialog.getButton(which);
                 if (button != null) {
                     button.setFocusable(true);
-                    button.setFocusableInTouchMode(
-                        isTvDevice && which == AlertDialog.BUTTON_POSITIVE);
+                    button.setFocusableInTouchMode(false);
                     button.setClickable(true);
                 }
             }
@@ -71,15 +65,18 @@ public class BaseDialogFragment extends DialogFragment {
         }
 
         positiveButton.setFocusable(true);
-        positiveButton.setFocusableInTouchMode(true);
-        positiveButton.post(positiveButton::requestFocus);
-
+        positiveButton.setFocusableInTouchMode(false);
         if (negativeButton != null) {
-            negativeButton.setFocusableInTouchMode(true);
+            negativeButton.setFocusableInTouchMode(false);
         }
         if (neutralButton != null) {
-            neutralButton.setFocusableInTouchMode(true);
+            neutralButton.setFocusableInTouchMode(false);
         }
+        positiveButton.post(() -> {
+            if (!positiveButton.isInTouchMode()) {
+                positiveButton.requestFocus();
+            }
+        });
 
         var decorView = dialog.getWindow().getDecorView();
         mDialogViewTreeObserver = decorView.getViewTreeObserver();
@@ -105,7 +102,9 @@ public class BaseDialogFragment extends DialogFragment {
 
     private void focusPositiveUnlessOtherButtonFocused(
         View positiveButton, View negativeButton, View neutralButton) {
-        if (!hasFocus(negativeButton) && !hasFocus(neutralButton)) {
+        if (!positiveButton.isInTouchMode()
+            && !hasFocus(negativeButton)
+            && !hasFocus(neutralButton)) {
             positiveButton.requestFocus();
         }
     }
@@ -135,31 +134,23 @@ public class BaseDialogFragment extends DialogFragment {
                 return true;
             }
         }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-            && event.getAction() == KeyEvent.ACTION_DOWN
-            && negativeButton != null
-            && negativeButton.isEnabled()
-            && !negativeButton.hasFocus()) {
-            negativeButton.requestFocus();
-            return true;
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (negativeButton != null && negativeButton.isEnabled()) {
+                    negativeButton.requestFocus();
+                }
+                return true;
+            }
         }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-            && event.getAction() == KeyEvent.ACTION_DOWN
-            && positiveButton.isEnabled()
-            && !positiveButton.hasFocus()) {
-            positiveButton.requestFocus();
-            return true;
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (positiveButton.isEnabled()) {
+                    positiveButton.requestFocus();
+                }
+                return true;
+            }
         }
         return false;
-    }
-
-    private boolean isTvDevice() {
-        var context = requireContext();
-        var uiModeManager =
-            (UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
-        return (uiModeManager != null
-                && uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION)
-            || !context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
     }
 
     protected boolean shouldHandleConfirmationDpadKeys() {
@@ -170,9 +161,8 @@ public class BaseDialogFragment extends DialogFragment {
         if (getDialog() instanceof AlertDialog alertDialog) {
             var positiveButton = alertDialog.getButton(AlertDialog.BUTTON_POSITIVE);
             if (positiveButton != null) {
-                boolean isTvDevice = isTvDevice();
                 positiveButton.post(() -> {
-                    if (isTvDevice || !positiveButton.isInTouchMode()) {
+                    if (!positiveButton.isInTouchMode()) {
                         positiveButton.requestFocus();
                     }
                 });
