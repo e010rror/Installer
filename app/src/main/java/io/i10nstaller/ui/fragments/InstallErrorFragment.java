@@ -64,6 +64,9 @@ public class InstallErrorFragment extends BaseDialogFragment {
     }
 
     private String getErrorMessage(Context context, int code) {
+        if (mAborted.getMessage() != null && !mAborted.getMessage().isBlank()) {
+            return mAborted.getMessage();
+        }
         switch (code) {
             case InstallAborted.ABORT_SHIZUKU -> {
                 if (!Shizuku.pingBinder()) {

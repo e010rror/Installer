@@ -21,7 +21,7 @@ public class LocalIntentReceiver {
             String statusMessage = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
             int legacyStatus = intent.getIntExtra(PackageInstaller_rename.EXTRA_LEGACY_STATUS,
                 PackageManager_rename.INSTALL_FAILED_INTERNAL_ERROR);
-            mResultObserver.onResult(status, legacyStatus, statusMessage);
+            mResultObserver.onResult(status, legacyStatus, statusMessage, intent);
         }
     };
 
@@ -34,6 +34,6 @@ public class LocalIntentReceiver {
     }
 
     public interface ResultObserver {
-        void onResult(int status, int legacyStatus, String message);
+        void onResult(int status, int legacyStatus, String message, Intent resultIntent);
     }
 }
