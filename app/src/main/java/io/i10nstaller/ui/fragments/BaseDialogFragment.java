@@ -7,6 +7,9 @@ import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.os.Bundle;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.ViewTreeObserver;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -20,6 +23,9 @@ public class BaseDialogFragment extends DialogFragment {
 
     public final InstallStage mDialogData;
     InstallViewModel mViewModel;
+    private ViewTreeObserver mDialogViewTreeObserver;
+    private ViewTreeObserver.OnWindowFocusChangeListener mWindowFocusChangeListener;
+    private ViewTreeObserver.OnTouchModeChangeListener mTouchModeChangeListener;
 
     public BaseDialogFragment(InstallStage dialogData) {
         mDialogData = dialogData;
@@ -50,7 +56,93 @@ public class BaseDialogFragment extends DialogFragment {
                     button.setClickable(true);
                 }
             }
+            if (shouldAutoFocusPositiveButtonOnTv() && isTvDevice) {
+                configureTvConfirmationDialog(alertDialog);
+            }
         }
+    }
+
+    private void configureTvConfirmationDialog(AlertDialog dialog) {
+        var positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        var negativeButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+        var neutralButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (positiveButton == null) {
+            return;
+        }
+
+        if (negativeButton != null) {
+            negativeButton.setFocusableInTouchMode(true);
+        }
+        if (neutralButton != null) {
+            neutralButton.setFocusableInTouchMode(true);
+        }
+
+        var decorView = dialog.getWindow().getDecorView();
+        mDialogViewTreeObserver = decorView.getViewTreeObserver();
+        mWindowFocusChangeListener = hasFocus -> {
+            if (hasFocus) {
+                focusPositiveUnlessOtherButtonFocused(
+                    positiveButton, negativeButton, neutralButton);
+            }
+        };
+        mTouchModeChangeListener = inTouchMode -> {
+            if (!inTouchMode) {
+                focusPositiveUnlessOtherButtonFocused(
+                    positiveButton, negativeButton, neutralButton);
+            }
+        };
+        mDialogViewTreeObserver.addOnWindowFocusChangeListener(mWindowFocusChangeListener);
+        mDialogViewTreeObserver.addOnTouchModeChangeListener(mTouchModeChangeListener);
+
+        dialog.setOnKeyListener((ignored, keyCode, event) ->
+            handleTvConfirmationKey(
+                positiveButton, negativeButton, neutralButton, keyCode, event));
+    }
+
+    private void focusPositiveUnlessOtherButtonFocused(
+        View positiveButton, View negativeButton, View neutralButton) {
+        if (!hasFocus(negativeButton) && !hasFocus(neutralButton)) {
+            positiveButton.requestFocus();
+        }
+    }
+
+    private boolean hasFocus(View button) {
+        return button != null && button.hasFocus();
+    }
+
+    private boolean handleTvConfirmationKey(
+        View positiveButton, View negativeButton, View neutralButton,
+        int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+            || keyCode == KeyEvent.KEYCODE_ENTER
+            || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            if (hasFocus(negativeButton) || hasFocus(neutralButton)) {
+                return false;
+            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                positiveButton.requestFocus();
+                positiveButton.setPressed(true);
+                return true;
+            }
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                positiveButton.setPressed(false);
+                if (!event.isCanceled()) {
+                    positiveButton.performClick();
+                }
+                return true;
+            }
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+            && event.getAction() == KeyEvent.ACTION_DOWN
+            && !hasFocus(negativeButton)
+            && !hasFocus(neutralButton)
+            && negativeButton != null
+            && negativeButton.getVisibility() == View.VISIBLE
+            && negativeButton.isEnabled()) {
+            negativeButton.requestFocus();
+            return true;
+        }
+        return false;
     }
 
     private boolean isTvDevice() {
@@ -60,6 +152,10 @@ public class BaseDialogFragment extends DialogFragment {
         return (uiModeManager != null
                 && uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION)
             || !context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
+    }
+
+    protected boolean shouldAutoFocusPositiveButtonOnTv() {
+        return false;
     }
 
     protected void focusPositiveButtonForDpad() {
@@ -74,6 +170,28 @@ public class BaseDialogFragment extends DialogFragment {
                 });
             }
         }
+    }
+
+    @Override
+    public void onStop() {
+        removeDialogFocusListeners();
+        super.onStop();
+    }
+
+    private void removeDialogFocusListeners() {
+        if (mDialogViewTreeObserver != null && mDialogViewTreeObserver.isAlive()) {
+            if (mWindowFocusChangeListener != null) {
+                mDialogViewTreeObserver.removeOnWindowFocusChangeListener(
+                    mWindowFocusChangeListener);
+            }
+            if (mTouchModeChangeListener != null) {
+                mDialogViewTreeObserver.removeOnTouchModeChangeListener(
+                    mTouchModeChangeListener);
+            }
+        }
+        mDialogViewTreeObserver = null;
+        mWindowFocusChangeListener = null;
+        mTouchModeChangeListener = null;
     }
 
     @Override

@@ -23,6 +23,11 @@ public class InstallConfirmationFragment extends BaseDialogFragment {
         mDialogData = dialogData;
     }
 
+    @Override
+    protected boolean shouldAutoFocusPositiveButtonOnTv() {
+        return true;
+    }
+
     @NonNull
     @Override
     public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
